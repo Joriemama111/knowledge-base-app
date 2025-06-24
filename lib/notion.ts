@@ -85,7 +85,10 @@ export async function getNotionQAItems(category?: string): Promise<NotionQAItem[
       ]
     })
 
-    const qaItems: NotionQAItem[] = response.results.map((page: any) => {
+    // Filter out archived pages
+    const filteredResults = response.results.filter((page: any) => !page.archived)
+
+    const qaItems: NotionQAItem[] = filteredResults.map((page: any) => {
       const properties = page.properties
       
       return {
@@ -153,7 +156,10 @@ export async function getNotionReadingItems(category?: string): Promise<NotionRe
       ]
     })
 
-    const readingItems: NotionReadingItem[] = response.results.map((page: any) => {
+    // Filter out archived pages
+    const filteredResults = response.results.filter((page: any) => !page.archived)
+
+    const readingItems: NotionReadingItem[] = filteredResults.map((page: any) => {
       const properties = page.properties
       const text = extractTextFromRichText(properties.Text?.rich_text || properties.Title?.title || properties.Name?.title)
       
@@ -411,6 +417,20 @@ export async function deleteNotionQAItem(id: string): Promise<boolean> {
     return true
   } catch (error) {
     console.error('Error deleting QA item from Notion:', error)
+    return false
+  }
+}
+
+// Delete reading item from Notion
+export async function deleteNotionReadingItem(id: string): Promise<boolean> {
+  try {
+    await notion.pages.update({
+      page_id: id,
+      archived: true
+    })
+    return true
+  } catch (error) {
+    console.error('Error deleting reading item from Notion:', error)
     return false
   }
 } 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getNotionReadingItems, addNotionReadingItem } from '@/lib/notion'
+import { getNotionReadingItems, addNotionReadingItem, deleteNotionReadingItem } from '@/lib/notion'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,6 +61,44 @@ export async function POST(request: NextRequest) {
       { 
         success: false, 
         error: 'Failed to create reading item',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams
+    const id = searchParams.get('id')
+    
+    if (!id) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'Missing required parameter: id' 
+        },
+        { status: 400 }
+      )
+    }
+    
+    const success = await deleteNotionReadingItem(id)
+    
+    if (!success) {
+      throw new Error('Failed to delete reading item from Notion')
+    }
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Reading item deleted successfully'
+    })
+  } catch (error) {
+    console.error('Error in Reading DELETE API:', error)
+    return NextResponse.json(
+      { 
+        success: false, 
+        error: 'Failed to delete reading item',
         message: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }

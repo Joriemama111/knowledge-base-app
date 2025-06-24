@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -84,9 +84,9 @@ function SortableQACard({
     <div 
       ref={setNodeRef} 
       style={style}
-      className="border rounded-lg p-4 bg-gray-50 relative group"
+      className="border rounded-lg bg-gray-50 relative group"
     >
-      <div>
+      <div className="border-l-4 border-blue-500 pl-4 pr-4 py-4">
         <div className="w-full">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -94,7 +94,7 @@ function SortableQACard({
               <button
                 {...attributes}
                 {...listeners}
-                className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors duration-200 text-gray-400 hover:text-gray-600 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100"
+                className="flex-shrink-0 w-6 h-6 hover:bg-gray-200 transition-colors duration-200 text-gray-400 hover:text-gray-600 flex items-center justify-center cursor-grab active:cursor-grabbing rounded"
                 aria-label="拖拽移动"
                 title="拖拽移动"
               >
@@ -148,7 +148,7 @@ function SortableQACard({
         </div>
       </div>
 
-      <div className="text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden">
+      <div className="text-gray-700 leading-relaxed max-w-none overflow-hidden prose prose-sm">
         {shouldShowButton && !isExpanded ? (
           <div className="relative">
             <div
@@ -634,24 +634,44 @@ export default function KnowledgeBasePage() {
 
   const handleDeleteReading = async (id: string) => {
     try {
-      if (isFirebaseAvailable) {
-        // Delete from Firebase (implementation would go here)
-        // For now, delete from local state
-        setReadingItems((prev) => prev.filter((item) => item.id !== id))
-      } else {
-        // Delete from local state
-        setReadingItems((prev) => prev.filter((item) => item.id !== id))
-      }
+      if (isNotionAvailable) {
+        const response = await fetch(`/api/notion/reading?id=${id}`, {
+          method: 'DELETE',
+        })
 
-      toast({
-        title: "删除成功",
-        description: "阅读项目已从列表中移除",
-      })
+        if (response.ok) {
+          // Remove from local state
+          setReadingItems(prev => prev.filter(item => item.id !== id))
+          // Also remove from allReadingItems
+          setAllReadingItems(prev => ({
+            ...prev,
+            [activeTab]: prev[activeTab]?.filter(item => item.id !== id) || []
+          }))
+          toast({
+            title: "删除成功",
+            description: "阅读项目已从Notion删除",
+          })
+        } else {
+          const data = await response.json()
+          throw new Error(data.message || 'Failed to delete reading item')
+        }
+      } else {
+        // Delete from local state only (demo mode)
+        setReadingItems(prev => prev.filter(item => item.id !== id))
+        setAllReadingItems(prev => ({
+          ...prev,
+          [activeTab]: prev[activeTab]?.filter(item => item.id !== id) || []
+        }))
+        toast({
+          title: "删除成功",
+          description: "阅读项目已删除",
+        })
+      }
     } catch (error) {
       console.error("Error deleting reading item:", error)
       toast({
         title: "删除失败",
-        description: "删除项目时出现错误，请重试",
+        description: error instanceof Error ? error.message : "请稍后重试",
         variant: "destructive",
       })
     }
@@ -746,6 +766,25 @@ export default function KnowledgeBasePage() {
       processedContent = processedContent
         .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
         .replace(/\*(.*?)\*/g, "<em>$1</em>")
+      
+      // 处理 Markdown 链接格式 [文本](链接)
+      processedContent = processedContent.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline cursor-pointer !no-underline hover:underline" style="color: #2563eb !important; text-decoration: underline !important; cursor: pointer !important;">${text}</a>`
+      })
+      
+      // 处理纯链接 - 匹配 http/https 开头的链接
+      processedContent = processedContent.replace(/(^|[^"'>])(https?:\/\/[^\s<]+)/gi, (match, prefix, url) => {
+        // 避免重复处理已经在 a 标签中的链接
+        if (prefix.includes('href=')) return match
+        
+        // 截断显示很长的链接
+        let displayUrl = url
+        if (url.length > 50) {
+          displayUrl = url.substring(0, 47) + '...'
+        }
+        
+        return `${prefix}<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-800 underline break-all cursor-pointer" style="color: #2563eb !important; text-decoration: underline !important; cursor: pointer !important;">${displayUrl}</a>`
+      })
       
       // 处理图片 - 标准 markdown 格式
       processedContent = processedContent.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
