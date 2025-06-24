@@ -145,27 +145,28 @@ function SortableQACard({
               )}
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="text-gray-700 leading-relaxed max-w-none overflow-hidden prose prose-sm pl-8">
-        {shouldShowButton && !isExpanded ? (
-          <div className="relative">
-            <div
-              className="overflow-hidden"
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                lineHeight: "1.6",
-              }}
-              dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, false) }}
-            />
-            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-50 to-transparent"></div>
+          {/* Content area moved inside the blue border */}
+          <div className="text-gray-700 leading-relaxed max-w-none overflow-hidden prose prose-sm pl-4">
+            {shouldShowButton && !isExpanded ? (
+              <div className="relative">
+                <div
+                  className="overflow-hidden"
+                  style={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    lineHeight: "1.6",
+                  }}
+                  dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, false) }}
+                />
+                <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-50 to-transparent"></div>
+              </div>
+            ) : (
+              <div className="break-words" dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, true) }} />
+            )}
           </div>
-        ) : (
-          <div className="break-words" dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, true) }} />
-        )}
+        </div>
       </div>
     </div>
   )
@@ -376,7 +377,7 @@ export default function KnowledgeBasePage() {
   useEffect(() => {
     const handleTabSwitch = async () => {
       // If data exists in cache/state, use it immediately
-      if (allQaItems[activeTab] && allReadingItems[activeTab]) {
+      if (allQaItems[activeTab] !== undefined && allReadingItems[activeTab] !== undefined) {
         setQaItems(allQaItems[activeTab])
         setReadingItems(allReadingItems[activeTab])
         return
@@ -1214,9 +1215,9 @@ export default function KnowledgeBasePage() {
                 </div>
                 <div className="space-y-2">
                   {requiredReading.map((item) => (
-                    <div key={item.id} className="flex items-start gap-2 p-3 bg-red-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="text-sm">{item.text}</div>
+                    <div key={item.id} className="flex items-start justify-between gap-3 p-3 bg-red-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm break-words">{item.text}</div>
                         {item.link && (
                           <a
                             href={item.link}
@@ -1229,22 +1230,22 @@ export default function KnowledgeBasePage() {
                           </a>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <button
                           onClick={() => handleEditReading(item)}
-                          className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 hover:bg-green-200 transition-colors duration-200 text-red-600 hover:text-green-600 flex items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-red-100 hover:bg-green-200 transition-colors duration-200 text-red-600 hover:text-green-700 flex items-center justify-center border border-red-200 hover:border-green-300"
                           aria-label="编辑阅读内容"
                           title="编辑阅读内容"
                         >
-                          <Edit2 className="h-4 w-4" />
+                          <Edit2 className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDeleteReading(item.id)}
-                          className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 transition-colors duration-200 text-red-600 hover:text-red-700 flex items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 transition-colors duration-200 text-red-600 hover:text-red-700 flex items-center justify-center border border-red-200 hover:border-red-300"
                           aria-label="删除阅读内容"
                           title="删除阅读内容"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
@@ -1285,9 +1286,9 @@ export default function KnowledgeBasePage() {
                 </div>
                 <div className="space-y-2">
                   {optionalReading.map((item) => (
-                    <div key={item.id} className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
-                      <div className="flex-1">
-                        <div className="text-sm">{item.text}</div>
+                    <div key={item.id} className="flex items-start justify-between gap-3 p-3 bg-blue-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm break-words">{item.text}</div>
                         {item.link && (
                           <a
                             href={item.link}
@@ -1300,22 +1301,22 @@ export default function KnowledgeBasePage() {
                           </a>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <button
                           onClick={() => handleEditReading(item)}
-                          className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 hover:bg-green-200 transition-colors duration-200 text-blue-600 hover:text-green-600 flex items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-blue-100 hover:bg-green-200 transition-colors duration-200 text-blue-600 hover:text-green-700 flex items-center justify-center border border-blue-200 hover:border-green-300"
                           aria-label="编辑阅读内容"
                           title="编辑阅读内容"
                         >
-                          <Edit2 className="h-4 w-4" />
+                          <Edit2 className="h-3 w-3" />
                         </button>
                         <button
                           onClick={() => handleDeleteReading(item.id)}
-                          className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 hover:bg-red-200 transition-colors duration-200 text-blue-600 hover:text-red-600 flex items-center justify-center"
+                          className="w-7 h-7 rounded-full bg-blue-100 hover:bg-red-200 transition-colors duration-200 text-blue-600 hover:text-red-700 flex items-center justify-center border border-blue-200 hover:border-red-300"
                           aria-label="删除阅读内容"
                           title="删除阅读内容"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
