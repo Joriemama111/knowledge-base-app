@@ -211,7 +211,10 @@ export default function KnowledgeBasePage() {
   const [newOptionalText, setNewOptionalText] = useState("")
   const [isFirebaseAvailable, setIsFirebaseAvailable] = useState(false)
   const [isNotionAvailable, setIsNotionAvailable] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadingCategories, setLoadingCategories] = useState<Set<string>>(new Set())
+  const [dataCache, setDataCache] = useState<Record<string, { qa: QAItem[], reading: ReadingItem[], timestamp: number }>>({})
+  const [isDataLoaded, setIsDataLoaded] = useState(false)
   const { toast } = useToast()
 
   // Drag and drop sensors
@@ -250,93 +253,151 @@ export default function KnowledgeBasePage() {
     console.log('App initialized successfully')
   }, [])
 
-  // Load data from Notion
+  // Load category data function with caching
+  const loadCategoryData = async (category: string, force = false) => {
+    const cacheKey = category
+    const now = Date.now()
+    const cacheExpiry = 5 * 60 * 1000 // 5 minutes cache
+    
+    // Check cache first (unless forced)
+    if (!force && dataCache[cacheKey] && (now - dataCache[cacheKey].timestamp < cacheExpiry)) {
+      console.log(`Using cached data for ${category}`)
+      return dataCache[cacheKey]
+    }
+
+    // Add to loading set
+    setLoadingCategories(prev => new Set(prev.add(category)))
+
+    try {
+      console.log(`Loading fresh data for ${category}...`)
+      const [qaResponse, readingResponse] = await Promise.all([
+        fetch(`/api/notion/qa?category=${category}`),
+        fetch(`/api/notion/reading?category=${category}`)
+      ])
+
+      let qaItems: QAItem[] = []
+      let readingItems: ReadingItem[] = []
+
+      if (qaResponse.ok) {
+        const qaData = await qaResponse.json()
+        if (qaData.success) {
+          qaItems = qaData.data.map((item: any) => ({
+            id: item.id,
+            title: item.title,
+            content: item.content,
+            timestamp: new Date(item.timestamp),
+            userId: 'notion-user',
+            category: category
+          }))
+        }
+      }
+
+      if (readingResponse.ok) {
+        const readingData = await readingResponse.json()
+        if (readingData.success) {
+          readingItems = readingData.data.map((item: any) => ({
+            id: item.id,
+            text: item.text,
+            link: item.link,
+            type: item.type,
+            timestamp: new Date(item.timestamp),
+            userId: 'notion-user',
+            category: category
+          }))
+        }
+      }
+
+      const categoryData = { qa: qaItems, reading: readingItems, timestamp: now }
+      
+      // Update cache
+      setDataCache(prev => ({
+        ...prev,
+        [cacheKey]: categoryData
+      }))
+
+      return categoryData
+    } catch (error) {
+      console.error(`Error loading ${category} data:`, error)
+      return { qa: [], reading: [], timestamp: now }
+    } finally {
+      // Remove from loading set
+      setLoadingCategories(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(category)
+        return newSet
+      })
+    }
+  }
+
+  // Initial data loading - prioritize current tab
   useEffect(() => {
-    const loadNotionData = async () => {
-      console.log('Loading Notion data...')
-      const allCategories = ['strategy', 'product', 'technology']
-      const newAllQaItems: Record<string, QAItem[]> = {}
-      const newAllReadingItems: Record<string, ReadingItem[]> = {}
-
+    const initializeData = async () => {
       try {
-        const response = await fetch(`/api/notion/qa?category=strategy`)
-        if (response.ok) {
-          console.log('Notion integration available')
+        // Test Notion connection first
+        const testResponse = await fetch(`/api/notion/qa?category=strategy`)
+        if (testResponse.ok) {
           setIsNotionAvailable(true)
+          console.log('Notion integration available')
           
-          // Load from Notion for all categories
-          for (const category of allCategories) {
-            try {
-              const [qaResponse, readingResponse] = await Promise.all([
-                fetch(`/api/notion/qa?category=${category}`),
-                fetch(`/api/notion/reading?category=${category}`)
-              ])
-
-              if (qaResponse.ok) {
-                const qaData = await qaResponse.json()
-                if (qaData.success) {
-                  newAllQaItems[category] = qaData.data.map((item: any) => ({
-                    id: item.id,
-                    title: item.title,
-                    content: item.content,
-                    timestamp: new Date(item.timestamp),
-                    userId: 'notion-user',
-                    category: category
-                  }))
-                } else {
-                  newAllQaItems[category] = []
-                }
-              } else {
-                newAllQaItems[category] = []
-              }
-
-              if (readingResponse.ok) {
-                const readingData = await readingResponse.json()
-                if (readingData.success) {
-                  newAllReadingItems[category] = readingData.data.map((item: any) => ({
-                    id: item.id,
-                    text: item.text,
-                    link: item.link,
-                    type: item.type,
-                    timestamp: new Date(item.timestamp),
-                    userId: 'notion-user',
-                    category: category
-                  }))
-                } else {
-                  newAllReadingItems[category] = []
-                }
-              } else {
-                newAllReadingItems[category] = []
-              }
-            } catch (error) {
-              console.error(`Error loading ${category} data:`, error)
-              newAllQaItems[category] = []
-              newAllReadingItems[category] = []
-            }
+          // Load current tab data first for faster UI
+          const currentTabData = await loadCategoryData(activeTab)
+          setAllQaItems(prev => ({ ...prev, [activeTab]: currentTabData.qa }))
+          setAllReadingItems(prev => ({ ...prev, [activeTab]: currentTabData.reading }))
+          setQaItems(currentTabData.qa)
+          setReadingItems(currentTabData.reading)
+          setIsDataLoaded(true)
+          setIsLoading(false)
+          
+          // Load other categories in background
+          const otherCategories = ['strategy', 'product', 'technology'].filter(cat => cat !== activeTab)
+          for (const category of otherCategories) {
+            loadCategoryData(category).then(data => {
+              setAllQaItems(prev => ({ ...prev, [category]: data.qa }))
+              setAllReadingItems(prev => ({ ...prev, [category]: data.reading }))
+            })
           }
-
-          setAllQaItems(newAllQaItems)
-          setAllReadingItems(newAllReadingItems)
-          console.log('Notion data loaded successfully')
+          
         } else {
-          console.log('Notion integration not available')
           setIsNotionAvailable(false)
+          setIsLoading(false)
+          console.log('Notion integration not available')
         }
       } catch (error) {
-        console.log('Notion integration not available, using empty data')
         setIsNotionAvailable(false)
+        setIsLoading(false)
+        console.log('Notion integration not available, using empty data')
       }
     }
 
-    // 延迟加载，确保UI先显示
-    setTimeout(loadNotionData, 100)
-  }, [])
+    initializeData()
+  }, []) // Only run once on mount
 
-  // Update current tab data when allQaItems changes or activeTab changes
+  // Handle tab switching with lazy loading
   useEffect(() => {
-    setQaItems(allQaItems[activeTab] || [])
-    setReadingItems(allReadingItems[activeTab] || [])
-  }, [allQaItems, allReadingItems, activeTab])
+    const handleTabSwitch = async () => {
+      // If data exists in cache/state, use it immediately
+      if (allQaItems[activeTab] && allReadingItems[activeTab]) {
+        setQaItems(allQaItems[activeTab])
+        setReadingItems(allReadingItems[activeTab])
+        return
+      }
+      
+      // If Notion is available and we haven't loaded this category yet, load it
+      if (isNotionAvailable && isDataLoaded) {
+        const categoryData = await loadCategoryData(activeTab)
+        setAllQaItems(prev => ({ ...prev, [activeTab]: categoryData.qa }))
+        setAllReadingItems(prev => ({ ...prev, [activeTab]: categoryData.reading }))
+        setQaItems(categoryData.qa)
+        setReadingItems(categoryData.reading)
+      } else {
+        // Use empty arrays as fallback
+        setQaItems([])
+        setReadingItems([])
+      }
+    }
+
+    handleTabSwitch()
+  }, [activeTab, isNotionAvailable, isDataLoaded])
 
   const toggleExpanded = (id: string) => {
     const newExpanded = new Set(expandedItems)
@@ -904,7 +965,7 @@ export default function KnowledgeBasePage() {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    relative px-6 py-3 text-sm font-medium rounded-t-lg mr-1 transition-all duration-200
+                    relative px-6 py-3 text-sm font-medium rounded-t-lg mr-1 transition-all duration-200 flex items-center gap-2
                     ${
                       activeTab === tab.id && !searchQuery
                         ? "bg-white text-gray-900 border-t border-l border-r border-gray-200 -mb-px z-10"
@@ -913,6 +974,9 @@ export default function KnowledgeBasePage() {
                   `}
                 >
                   {tab.label}
+                  {loadingCategories.has(tab.id) && (
+                    <div className="animate-spin rounded-full h-3 w-3 border border-blue-500 border-t-transparent"></div>
+                  )}
                   {activeTab === tab.id && !searchQuery && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"></div>}
                 </button>
               ))}
@@ -1081,7 +1145,14 @@ export default function KnowledgeBasePage() {
               </Dialog>
             </CardHeader>
             <CardContent className="space-y-4">
-              {filteredQAItems.length === 0 ? (
+              {loadingCategories.has(activeTab) ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-3 text-gray-600">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent"></div>
+                    <span>正在加载 {tabs.find(t => t.id === activeTab)?.label} 知识库...</span>
+                  </div>
+                </div>
+              ) : filteredQAItems.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   {searchQuery ? "没有找到匹配的内容" : '暂无问答内容，点击"新建内容"开始添加'}
                 </div>
