@@ -5,13 +5,171 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Search, Plus, ChevronDown, ChevronUp, ExternalLink, Trash2, User, AlertCircle, Edit2 } from "lucide-react"
+import { Search, Plus, ChevronDown, ChevronUp, ExternalLink, Trash2, User, AlertCircle, Edit2, GripVertical } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { RichTextEditor } from "@/components/rich-text-editor"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+
+// Sortable QA Card Component
+interface SortableQACardProps {
+  item: QAItem
+  isExpanded: boolean
+  searchQuery: string
+  onToggleExpanded: (id: string) => void
+  onEdit: (item: QAItem) => void
+  onDelete: (id: string) => void
+  renderRichContent: (content: string, isExpanded: boolean) => string
+}
+
+function SortableQACard({ 
+  item, 
+  isExpanded, 
+  searchQuery, 
+  onToggleExpanded, 
+  onEdit, 
+  onDelete, 
+  renderRichContent 
+}: SortableQACardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const shouldShowButton = item.content.length > 150
+  const itemWithCategory = item as any // Type assertion for sourceCategory
+
+  // Get category info for display
+  const getCategoryInfo = (category: string) => {
+    const categoryMap: Record<string, { label: string; color: string }> = {
+      'strategy': { label: '战略', color: 'bg-blue-100 text-blue-800' },
+      'product': { label: '产品', color: 'bg-green-100 text-green-800' },
+      'technology': { label: '技术', color: 'bg-purple-100 text-purple-800' }
+    }
+    return categoryMap[category] || { label: category, color: 'bg-gray-100 text-gray-800' }
+  }
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style}
+      className="border rounded-lg p-4 bg-gray-50 relative group"
+    >
+      <div>
+        <div className="w-full">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              {/* Drag Handle */}
+              <button
+                {...attributes}
+                {...listeners}
+                className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors duration-200 text-gray-400 hover:text-gray-600 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100"
+                aria-label="拖拽移动"
+                title="拖拽移动"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+              
+              <h3 className="font-bold text-lg">{item.title}</h3>
+              {searchQuery && itemWithCategory.sourceCategory && (
+                <Badge 
+                  variant="outline" 
+                  className={`text-xs ${getCategoryInfo(itemWithCategory.sourceCategory).color}`}
+                >
+                  {getCategoryInfo(itemWithCategory.sourceCategory).label}
+                </Badge>
+              )}
+            </div>
+            {/* Action buttons on the right side of title */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onEdit(item)}
+                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-blue-100 transition-colors duration-200 text-gray-600 hover:text-blue-600 flex items-center justify-center"
+                aria-label="编辑内容"
+                title="编辑内容"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => onDelete(item.id)}
+                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-100 transition-colors duration-200 text-gray-600 hover:text-red-600 flex items-center justify-center"
+                aria-label="删除内容"
+                title="删除内容"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+              {shouldShowButton && (
+                <button
+                  onClick={() => onToggleExpanded(item.id)}
+                  className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors duration-200 text-gray-600 hover:text-gray-800 flex items-center justify-center"
+                  aria-label={isExpanded ? "收起内容" : "展开内容"}
+                  title={isExpanded ? "收起内容" : "展开内容"}
+                >
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden">
+        {shouldShowButton && !isExpanded ? (
+          <div className="relative">
+            <div
+              className="overflow-hidden"
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                lineHeight: "1.6",
+              }}
+              dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, false) }}
+            />
+            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-50 to-transparent"></div>
+          </div>
+        ) : (
+          <div className="break-words" dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, true) }} />
+        )}
+      </div>
+    </div>
+  )
+}
 
 interface QAItem {
   id: string
@@ -19,6 +177,7 @@ interface QAItem {
   content: string
   timestamp: any
   userId: string
+  order?: number
 }
 
 interface ReadingItem {
@@ -54,6 +213,14 @@ export default function KnowledgeBasePage() {
   const [isNotionAvailable, setIsNotionAvailable] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   const tabs = [
     { id: "strategy", label: "战略", title: "战略知识库" },
@@ -638,6 +805,41 @@ export default function KnowledgeBasePage() {
   const requiredReading = getFilteredReadingItems("required")
   const optionalReading = getFilteredReadingItems("optional")
 
+  // Handle drag end for QA items
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (!over || active.id === over.id) {
+      return
+    }
+
+    const oldIndex = qaItems.findIndex((item) => item.id === active.id)
+    const newIndex = qaItems.findIndex((item) => item.id === over.id)
+
+    if (oldIndex !== -1 && newIndex !== -1) {
+      const newQaItems = arrayMove(qaItems, oldIndex, newIndex)
+      
+      // Update order for each item
+      const updatedItems = newQaItems.map((item, index) => ({
+        ...item,
+        order: index
+      }))
+
+      setQaItems(updatedItems)
+      
+      // Update the allQaItems state
+      const newAllQaItems = { ...allQaItems }
+      newAllQaItems[activeTab] = updatedItems
+      setAllQaItems(newAllQaItems)
+
+      // TODO: Save order to backend if needed
+      toast({
+        title: "排序已更新",
+        description: "知识卡片顺序已保存",
+      })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -845,99 +1047,31 @@ export default function KnowledgeBasePage() {
                   {searchQuery ? "没有找到匹配的内容" : '暂无问答内容，点击"新建内容"开始添加'}
                 </div>
               ) : (
-                filteredQAItems.map((item) => {
-                  const isExpanded = expandedItems.has(item.id)
-                  const shouldShowButton = item.content.length > 150
-                  const itemWithCategory = item as any // Type assertion for sourceCategory
-
-                  // Get category info for display
-                  const getCategoryInfo = (category: string) => {
-                    const categoryMap: Record<string, { label: string; color: string }> = {
-                      'strategy': { label: '战略', color: 'bg-blue-100 text-blue-800' },
-                      'product': { label: '产品', color: 'bg-green-100 text-green-800' },
-                      'technology': { label: '技术', color: 'bg-purple-100 text-purple-800' }
-                    }
-                    return categoryMap[category] || { label: category, color: 'bg-gray-100 text-gray-800' }
-                  }
-
-                  return (
-                    <div key={item.id} className="border rounded-lg p-4 bg-gray-50 relative">
-                      <div>
-                        <div className="w-full">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-lg">{item.title}</h3>
-                              {searchQuery && itemWithCategory.sourceCategory && (
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-xs ${getCategoryInfo(itemWithCategory.sourceCategory).color}`}
-                                >
-                                  {getCategoryInfo(itemWithCategory.sourceCategory).label}
-                                </Badge>
-                              )}
-                            </div>
-                            {/* Action buttons on the right side of title */}
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleEditQA(item)}
-                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-blue-100 transition-colors duration-200 text-gray-600 hover:text-blue-600 flex items-center justify-center"
-                                aria-label="编辑内容"
-                                title="编辑内容"
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteQA(item.id)}
-                                className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-red-100 transition-colors duration-200 text-gray-600 hover:text-red-600 flex items-center justify-center"
-                                aria-label="删除内容"
-                                title="删除内容"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                              {shouldShowButton && (
-                                <button
-                                  onClick={() => toggleExpanded(item.id)}
-                                  className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors duration-200 text-gray-600 hover:text-gray-800 flex items-center justify-center"
-                                  aria-label={isExpanded ? "收起内容" : "展开内容"}
-                                  title={isExpanded ? "收起内容" : "展开内容"}
-                                >
-                                  {isExpanded ? (
-                                    <ChevronUp className="h-4 w-4" />
-                                  ) : (
-                                    <ChevronDown className="h-4 w-4" />
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                      </div>
-
-                      <div className="text-gray-700 leading-relaxed prose prose-sm max-w-none overflow-hidden">
-                        {shouldShowButton && !isExpanded ? (
-                          <div className="relative">
-                            <div
-                              className="overflow-hidden"
-                              style={{
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                lineHeight: "1.6",
-                              }}
-                              dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, false) }}
-                            />
-                            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-gray-50 to-transparent"></div>
-                          </div>
-                        ) : (
-                          <div className="break-words" dangerouslySetInnerHTML={{ __html: renderRichContent(item.content, true) }} />
-                        )}
-                      </div>
-
-
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={filteredQAItems.map(item => item.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-4">
+                      {filteredQAItems.map((item) => (
+                        <SortableQACard
+                          key={item.id}
+                          item={item}
+                          isExpanded={expandedItems.has(item.id)}
+                          searchQuery={searchQuery}
+                          onToggleExpanded={toggleExpanded}
+                          onEdit={handleEditQA}
+                          onDelete={handleDeleteQA}
+                          renderRichContent={renderRichContent}
+                        />
+                      ))}
                     </div>
-                  )
-                })
+                  </SortableContext>
+                </DndContext>
               )}
             </CardContent>
           </Card>
