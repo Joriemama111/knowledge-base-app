@@ -148,7 +148,7 @@ function SortableQACard({
         </div>
       </div>
 
-      <div className="text-gray-700 leading-relaxed max-w-none overflow-hidden prose prose-sm">
+      <div className="text-gray-700 leading-relaxed max-w-none overflow-hidden prose prose-sm pl-8">
         {shouldShowButton && !isExpanded ? (
           <div className="relative">
             <div
