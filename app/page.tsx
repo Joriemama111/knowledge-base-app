@@ -361,13 +361,26 @@ export default function KnowledgeBasePage() {
   // Load data when tab changes or after initialization
   useEffect(() => {
     const loadTabData = async () => {
-      if (!isDataLoaded) return
+      if (!isDataLoaded) {
+        console.log('Data not loaded yet, skipping...')
+        return
+      }
       
       console.log(`Loading data for tab: ${activeTab}`)
+      console.log('Current state:', {
+        allQaItems: Object.keys(allQaItems),
+        allReadingItems: Object.keys(allReadingItems),
+        qaItems: qaItems.length,
+        readingItems: readingItems.length,
+        isNotionAvailable
+      })
       
       // If data already exists in state, use it
       if (allQaItems[activeTab] && allReadingItems[activeTab]) {
-        console.log(`Using cached data for ${activeTab}`)
+        console.log(`Using cached data for ${activeTab}:`, {
+          qa: allQaItems[activeTab].length,
+          reading: allReadingItems[activeTab].length
+        })
         setQaItems(allQaItems[activeTab])
         setReadingItems(allReadingItems[activeTab])
         return
@@ -376,12 +389,23 @@ export default function KnowledgeBasePage() {
       // Load fresh data
       if (isNotionAvailable) {
         try {
+          console.log(`Loading fresh data for ${activeTab}...`)
           const categoryData = await loadCategoryData(activeTab)
-          console.log(`Loaded ${categoryData.qa.length} QA items and ${categoryData.reading.length} reading items for ${activeTab}`)
+          console.log(`✅ Loaded ${categoryData.qa.length} QA items and ${categoryData.reading.length} reading items for ${activeTab}`)
+          console.log('QA items:', categoryData.qa)
+          console.log('Reading items:', categoryData.reading)
           
           // Update all states
-          setAllQaItems(prev => ({ ...prev, [activeTab]: categoryData.qa }))
-          setAllReadingItems(prev => ({ ...prev, [activeTab]: categoryData.reading }))
+          setAllQaItems(prev => {
+            const newState = { ...prev, [activeTab]: categoryData.qa }
+            console.log('Updated allQaItems:', newState)
+            return newState
+          })
+          setAllReadingItems(prev => {
+            const newState = { ...prev, [activeTab]: categoryData.reading }
+            console.log('Updated allReadingItems:', newState)
+            return newState
+          })
           setQaItems(categoryData.qa)
           setReadingItems(categoryData.reading)
           
@@ -390,6 +414,7 @@ export default function KnowledgeBasePage() {
           otherCategories.forEach(async (category) => {
             if (!allQaItems[category] || !allReadingItems[category]) {
               try {
+                console.log(`Preloading ${category}...`)
                 const data = await loadCategoryData(category)
                 setAllQaItems(prev => ({ ...prev, [category]: data.qa }))
                 setAllReadingItems(prev => ({ ...prev, [category]: data.reading }))
@@ -404,7 +429,7 @@ export default function KnowledgeBasePage() {
           setReadingItems([])
         }
       } else {
-        // Demo mode - use empty data
+        console.log('Notion not available, using demo mode')
         setQaItems([])
         setReadingItems([])
       }
