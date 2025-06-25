@@ -793,25 +793,84 @@ export default function KnowledgeBasePage() {
     if (!editingReadingItem) return
 
     try {
-      // Update local state
-      setReadingItems(prev => 
-        prev.map(item => 
-          item.id === editingReadingItem.id ? editingReadingItem : item
+      if (isNotionAvailable) {
+        // Update in Notion
+        const response = await fetch('/api/notion/reading', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            id: editingReadingItem.id,
+            text: editingReadingItem.text,
+            link: editingReadingItem.link || '',
+            type: editingReadingItem.type,
+            category: activeTab,
+          }),
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success) {
+            // Update local state
+            setReadingItems(prev => 
+              prev.map(item => 
+                item.id === editingReadingItem.id ? editingReadingItem : item
+              )
+            )
+            
+            // Update allReadingItems state
+            setAllReadingItems(prev => ({
+              ...prev,
+              [activeTab]: prev[activeTab]?.map(item => 
+                item.id === editingReadingItem.id ? editingReadingItem : item
+              ) || []
+            }))
+          } else {
+            throw new Error(result.error || 'Failed to update in Notion')
+          }
+        } else {
+          throw new Error('Failed to update in Notion')
+        }
+      } else {
+        // Update local state only (demo mode)
+        setReadingItems(prev => 
+          prev.map(item => 
+            item.id === editingReadingItem.id ? editingReadingItem : item
+          )
         )
-      )
+        
+        // Update allReadingItems state
+        setAllReadingItems(prev => ({
+          ...prev,
+          [activeTab]: prev[activeTab]?.map(item => 
+            item.id === editingReadingItem.id ? editingReadingItem : item
+          ) || []
+        }))
+      }
       
       setIsEditReadingOpen(false)
       setEditingReadingItem(null)
       
+      // Force refresh data from Notion to ensure latest state
+      if (isNotionAvailable) {
+        const refreshedData = await loadCategoryData(activeTab, true) // force refresh
+        setReadingItems(refreshedData.reading)
+        setAllReadingItems(prev => ({
+          ...prev,
+          [activeTab]: refreshedData.reading
+        }))
+      }
+      
       toast({
         title: "更新成功",
-        description: "阅读内容已更新",
+        description: isNotionAvailable ? "阅读内容已在Notion中更新" : "阅读内容已更新",
       })
     } catch (error) {
       console.error('Error updating reading item:', error)
       toast({
         title: "更新失败",
-        description: "请稍后重试",
+        description: error instanceof Error ? error.message : "请稍后重试",
         variant: "destructive",
       })
     }

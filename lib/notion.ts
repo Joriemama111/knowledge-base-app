@@ -163,10 +163,15 @@ export async function getNotionReadingItems(category?: string): Promise<NotionRe
       const properties = page.properties
       const text = extractTextFromRichText(properties.Text?.rich_text || properties.Title?.title || properties.Name?.title)
       
-      // Extract URL from text
-      const urlRegex = /(https?:\/\/[^\s]+)/g
-      const urls = text.match(urlRegex)
-      const link = urls ? urls[0] : extractTextFromRichText(properties.Link?.url ? [{ plain_text: properties.Link.url }] : [])
+      // Extract URL from Links property or from text
+      let link = properties.Links?.url || undefined
+      
+      // If no link property, try to extract from text
+      if (!link) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g
+        const urls = text.match(urlRegex)
+        link = urls ? urls[0] : undefined
+      }
       
       return {
         id: page.id,
@@ -404,6 +409,84 @@ export async function addNotionReadingItem(item: Omit<NotionReadingItem, 'id' | 
   } catch (error) {
     console.error('Error adding reading item to Notion:', error)
     return null
+  }
+}
+
+// Update reading item in Notion
+export async function updateNotionReadingItem(id: string, updates: Partial<NotionReadingItem>): Promise<boolean> {
+  try {
+    const properties: any = {}
+    
+    if (updates.text) {
+      // Handle Notion's 2000 character limit
+      const maxLength = 1950 // Leave some buffer
+      let text = updates.text
+      if (text.length > maxLength) {
+        text = text.substring(0, maxLength) + '...\n\n[内容已截断，完整内容请在应用中查看]'
+      }
+      
+      properties.Text = {
+        rich_text: [
+          {
+            text: {
+              content: text
+            }
+          }
+        ]
+      }
+    }
+    
+    if (updates.type) {
+      const typeMap: Record<string, string> = {
+        'required': 'Required',
+        'optional': 'Optional'
+      }
+      const notionType = typeMap[updates.type] || updates.type
+      
+      properties.Type = {
+        select: {
+          name: notionType
+        }
+      }
+    }
+    
+    if (updates.category) {
+      const categoryMap: Record<string, string> = {
+        'strategy': 'Strategy',
+        'product': 'Product', 
+        'technology': 'Technology'
+      }
+      const notionCategory = categoryMap[updates.category] || updates.category
+      
+      properties.Category = {
+        select: {
+          name: notionCategory
+        }
+      }
+    }
+    
+    if (updates.hasOwnProperty('link')) {
+      if (updates.link && updates.link.trim()) {
+        properties.Links = {
+          url: updates.link
+        }
+      } else {
+        // Clear the link if it's empty
+        properties.Links = {
+          url: null
+        }
+      }
+    }
+
+    await notion.pages.update({
+      page_id: id,
+      properties
+    })
+
+    return true
+  } catch (error) {
+    console.error('Error updating reading item in Notion:', error)
+    return false
   }
 }
 
