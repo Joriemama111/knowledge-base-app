@@ -333,7 +333,7 @@ export default function KnowledgeBasePage() {
   // Initial data loading
   useEffect(() => {
     const initializeData = async () => {
-      console.log('Initializing data...')
+      console.log('🚀 Initializing data...')
       setIsLoading(true)
       
       try {
@@ -341,14 +341,31 @@ export default function KnowledgeBasePage() {
         const testResponse = await fetch(`/api/notion/qa?category=strategy`)
         if (testResponse.ok) {
           setIsNotionAvailable(true)
-          console.log('Notion integration available')
+          console.log('✅ Notion integration available')
+          
+          // Immediately load current tab data
+          console.log(`🔄 Loading initial data for ${activeTab}...`)
+          const currentTabData = await loadCategoryData(activeTab, true) // force fresh load
+          
+          console.log(`📊 Initial load result:`, {
+            qa: currentTabData.qa.length,
+            reading: currentTabData.reading.length
+          })
+          
+          // Set data immediately
+          setQaItems(currentTabData.qa)
+          setReadingItems(currentTabData.reading)
+          setAllQaItems({ [activeTab]: currentTabData.qa })
+          setAllReadingItems({ [activeTab]: currentTabData.reading })
+          
+          console.log('✅ Initial data loaded and set')
         } else {
           setIsNotionAvailable(false)
-          console.log('Notion integration not available')
+          console.log('❌ Notion integration not available')
         }
       } catch (error) {
         setIsNotionAvailable(false)
-        console.log('Notion integration not available, using empty data')
+        console.log('❌ Notion integration error:', error)
       }
       
       setIsDataLoaded(true)
@@ -358,26 +375,19 @@ export default function KnowledgeBasePage() {
     initializeData()
   }, []) // Only run once on mount
 
-  // Load data when tab changes or after initialization
+  // Load data when tab changes (after initial load)
   useEffect(() => {
     const loadTabData = async () => {
-      if (!isDataLoaded) {
-        console.log('Data not loaded yet, skipping...')
+      if (!isDataLoaded || !isNotionAvailable) {
+        console.log('⏳ Skipping tab data load - not ready yet')
         return
       }
       
-      console.log(`Loading data for tab: ${activeTab}`)
-      console.log('Current state:', {
-        allQaItems: Object.keys(allQaItems),
-        allReadingItems: Object.keys(allReadingItems),
-        qaItems: qaItems.length,
-        readingItems: readingItems.length,
-        isNotionAvailable
-      })
+      console.log(`🔄 Loading data for tab: ${activeTab}`)
       
-      // If data already exists in state, use it
+      // Check if we already have data for this tab
       if (allQaItems[activeTab] && allReadingItems[activeTab]) {
-        console.log(`Using cached data for ${activeTab}:`, {
+        console.log(`📋 Using cached data for ${activeTab}:`, {
           qa: allQaItems[activeTab].length,
           reading: allReadingItems[activeTab].length
         })
@@ -386,56 +396,36 @@ export default function KnowledgeBasePage() {
         return
       }
       
-      // Load fresh data
-      if (isNotionAvailable) {
-        try {
-          console.log(`Loading fresh data for ${activeTab}...`)
-          const categoryData = await loadCategoryData(activeTab)
-          console.log(`✅ Loaded ${categoryData.qa.length} QA items and ${categoryData.reading.length} reading items for ${activeTab}`)
-          console.log('QA items:', categoryData.qa)
-          console.log('Reading items:', categoryData.reading)
-          
-          // Update all states
-          setAllQaItems(prev => {
-            const newState = { ...prev, [activeTab]: categoryData.qa }
-            console.log('Updated allQaItems:', newState)
-            return newState
-          })
-          setAllReadingItems(prev => {
-            const newState = { ...prev, [activeTab]: categoryData.reading }
-            console.log('Updated allReadingItems:', newState)
-            return newState
-          })
-          setQaItems(categoryData.qa)
-          setReadingItems(categoryData.reading)
-          
-          // Preload other categories in background
-          const otherCategories = ['strategy', 'product', 'technology'].filter(cat => cat !== activeTab)
-          otherCategories.forEach(async (category) => {
-            if (!allQaItems[category] || !allReadingItems[category]) {
-              try {
-                console.log(`Preloading ${category}...`)
-                const data = await loadCategoryData(category)
-                setAllQaItems(prev => ({ ...prev, [category]: data.qa }))
-                setAllReadingItems(prev => ({ ...prev, [category]: data.reading }))
-              } catch (error) {
-                console.error(`Failed to preload ${category}:`, error)
-              }
-            }
-          })
-        } catch (error) {
-          console.error(`Error loading ${activeTab} data:`, error)
-          setQaItems([])
-          setReadingItems([])
-        }
-      } else {
-        console.log('Notion not available, using demo mode')
+      // Load fresh data for this tab
+      try {
+        console.log(`🌐 Fetching fresh data for ${activeTab}...`)
+        const categoryData = await loadCategoryData(activeTab, true) // force fresh
+        
+        console.log(`✅ Tab data loaded:`, {
+          qa: categoryData.qa.length,
+          reading: categoryData.reading.length,
+          qaItems: categoryData.qa.map(item => ({ id: item.id, title: item.title })),
+          readingItems: categoryData.reading.map(item => ({ id: item.id, text: item.text?.substring(0, 50) + '...' }))
+        })
+        
+        // Update states
+        setQaItems(categoryData.qa)
+        setReadingItems(categoryData.reading)
+        setAllQaItems(prev => ({ ...prev, [activeTab]: categoryData.qa }))
+        setAllReadingItems(prev => ({ ...prev, [activeTab]: categoryData.reading }))
+        
+        console.log('✅ States updated for', activeTab)
+      } catch (error) {
+        console.error(`❌ Error loading ${activeTab} data:`, error)
         setQaItems([])
         setReadingItems([])
       }
     }
 
-    loadTabData()
+    // Only run if this is a tab switch (not initial load)
+    if (isDataLoaded) {
+      loadTabData()
+    }
   }, [activeTab, isDataLoaded, isNotionAvailable])
 
   const toggleExpanded = (id: string) => {
