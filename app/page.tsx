@@ -792,9 +792,30 @@ export default function KnowledgeBasePage() {
   const handleUpdateReading = async () => {
     if (!editingReadingItem) return
 
+    console.log('Updating reading item:', editingReadingItem) // Debug log
+
     try {
+      // First update local state immediately for better UX
+      setReadingItems(prev => 
+        prev.map(item => 
+          item.id === editingReadingItem.id ? editingReadingItem : item
+        )
+      )
+      
+      // Update allReadingItems state
+      setAllReadingItems(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab]?.map(item => 
+          item.id === editingReadingItem.id ? editingReadingItem : item
+        ) || []
+      }))
+
+      // Close dialog immediately
+      setIsEditReadingOpen(false)
+      setEditingReadingItem(null)
+
       if (isNotionAvailable) {
-        // Update in Notion
+        // Update in Notion in background
         const response = await fetch('/api/notion/reading', {
           method: 'PUT',
           headers: {
@@ -811,60 +832,19 @@ export default function KnowledgeBasePage() {
 
         if (response.ok) {
           const result = await response.json()
-          if (result.success) {
-            // Update local state
-            setReadingItems(prev => 
-              prev.map(item => 
-                item.id === editingReadingItem.id ? editingReadingItem : item
-              )
-            )
-            
-            // Update allReadingItems state
-            setAllReadingItems(prev => ({
-              ...prev,
-              [activeTab]: prev[activeTab]?.map(item => 
-                item.id === editingReadingItem.id ? editingReadingItem : item
-              ) || []
-            }))
-          } else {
-            throw new Error(result.error || 'Failed to update in Notion')
+          if (!result.success) {
+            console.error('Notion update failed:', result.error)
+            // Optionally revert local changes here if needed
           }
         } else {
-          throw new Error('Failed to update in Notion')
+          console.error('Failed to update in Notion:', response.status)
+          // Optionally revert local changes here if needed
         }
-      } else {
-        // Update local state only (demo mode)
-        setReadingItems(prev => 
-          prev.map(item => 
-            item.id === editingReadingItem.id ? editingReadingItem : item
-          )
-        )
-        
-        // Update allReadingItems state
-        setAllReadingItems(prev => ({
-          ...prev,
-          [activeTab]: prev[activeTab]?.map(item => 
-            item.id === editingReadingItem.id ? editingReadingItem : item
-          ) || []
-        }))
-      }
-      
-      setIsEditReadingOpen(false)
-      setEditingReadingItem(null)
-      
-      // Force refresh data from Notion to ensure latest state
-      if (isNotionAvailable) {
-        const refreshedData = await loadCategoryData(activeTab, true) // force refresh
-        setReadingItems(refreshedData.reading)
-        setAllReadingItems(prev => ({
-          ...prev,
-          [activeTab]: refreshedData.reading
-        }))
       }
       
       toast({
         title: "更新成功",
-        description: isNotionAvailable ? "阅读内容已在Notion中更新" : "阅读内容已更新",
+        description: isNotionAvailable ? "阅读内容已更新（正在同步到Notion）" : "阅读内容已更新",
       })
     } catch (error) {
       console.error('Error updating reading item:', error)
