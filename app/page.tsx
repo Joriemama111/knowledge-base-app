@@ -330,75 +330,88 @@ export default function KnowledgeBasePage() {
     }
   }
 
-  // Initial data loading - prioritize current tab
+  // Initial data loading
   useEffect(() => {
     const initializeData = async () => {
+      console.log('Initializing data...')
+      setIsLoading(true)
+      
       try {
         // Test Notion connection first
         const testResponse = await fetch(`/api/notion/qa?category=strategy`)
         if (testResponse.ok) {
           setIsNotionAvailable(true)
           console.log('Notion integration available')
-          
-          // Load current tab data first for faster UI
-          const currentTabData = await loadCategoryData(activeTab)
-          setAllQaItems(prev => ({ ...prev, [activeTab]: currentTabData.qa }))
-          setAllReadingItems(prev => ({ ...prev, [activeTab]: currentTabData.reading }))
-          setQaItems(currentTabData.qa)
-          setReadingItems(currentTabData.reading)
-          setIsDataLoaded(true)
-          setIsLoading(false)
-          
-          // Load other categories in background
-          const otherCategories = ['strategy', 'product', 'technology'].filter(cat => cat !== activeTab)
-          for (const category of otherCategories) {
-            loadCategoryData(category).then(data => {
-              setAllQaItems(prev => ({ ...prev, [category]: data.qa }))
-              setAllReadingItems(prev => ({ ...prev, [category]: data.reading }))
-            })
-          }
-          
         } else {
           setIsNotionAvailable(false)
-          setIsLoading(false)
           console.log('Notion integration not available')
         }
       } catch (error) {
         setIsNotionAvailable(false)
-        setIsLoading(false)
         console.log('Notion integration not available, using empty data')
       }
+      
+      setIsDataLoaded(true)
+      setIsLoading(false)
     }
 
     initializeData()
   }, []) // Only run once on mount
 
-  // Handle tab switching with lazy loading
+  // Load data when tab changes or after initialization
   useEffect(() => {
-    const handleTabSwitch = async () => {
-      // If data exists in cache/state, use it immediately
-      if (allQaItems[activeTab] !== undefined && allReadingItems[activeTab] !== undefined) {
+    const loadTabData = async () => {
+      if (!isDataLoaded) return
+      
+      console.log(`Loading data for tab: ${activeTab}`)
+      
+      // If data already exists in state, use it
+      if (allQaItems[activeTab] && allReadingItems[activeTab]) {
+        console.log(`Using cached data for ${activeTab}`)
         setQaItems(allQaItems[activeTab])
         setReadingItems(allReadingItems[activeTab])
         return
       }
       
-      // If Notion is available and we haven't loaded this category yet, load it
-      if (isNotionAvailable && isDataLoaded) {
-        const categoryData = await loadCategoryData(activeTab)
-        setAllQaItems(prev => ({ ...prev, [activeTab]: categoryData.qa }))
-        setAllReadingItems(prev => ({ ...prev, [activeTab]: categoryData.reading }))
-        setQaItems(categoryData.qa)
-        setReadingItems(categoryData.reading)
+      // Load fresh data
+      if (isNotionAvailable) {
+        try {
+          const categoryData = await loadCategoryData(activeTab)
+          console.log(`Loaded ${categoryData.qa.length} QA items and ${categoryData.reading.length} reading items for ${activeTab}`)
+          
+          // Update all states
+          setAllQaItems(prev => ({ ...prev, [activeTab]: categoryData.qa }))
+          setAllReadingItems(prev => ({ ...prev, [activeTab]: categoryData.reading }))
+          setQaItems(categoryData.qa)
+          setReadingItems(categoryData.reading)
+          
+          // Preload other categories in background
+          const otherCategories = ['strategy', 'product', 'technology'].filter(cat => cat !== activeTab)
+          otherCategories.forEach(async (category) => {
+            if (!allQaItems[category] || !allReadingItems[category]) {
+              try {
+                const data = await loadCategoryData(category)
+                setAllQaItems(prev => ({ ...prev, [category]: data.qa }))
+                setAllReadingItems(prev => ({ ...prev, [category]: data.reading }))
+              } catch (error) {
+                console.error(`Failed to preload ${category}:`, error)
+              }
+            }
+          })
+        } catch (error) {
+          console.error(`Error loading ${activeTab} data:`, error)
+          setQaItems([])
+          setReadingItems([])
+        }
       } else {
-        // Use empty arrays as fallback
+        // Demo mode - use empty data
         setQaItems([])
         setReadingItems([])
       }
     }
 
-    handleTabSwitch()
-  }, [activeTab, isNotionAvailable, isDataLoaded])
+    loadTabData()
+  }, [activeTab, isDataLoaded, isNotionAvailable])
 
   const toggleExpanded = (id: string) => {
     const newExpanded = new Set(expandedItems)
@@ -1185,7 +1198,14 @@ export default function KnowledgeBasePage() {
               </Dialog>
             </CardHeader>
             <CardContent className="space-y-4">
-              {loadingCategories.has(activeTab) ? (
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center gap-3 text-gray-600">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent"></div>
+                    <span>正在初始化应用...</span>
+                  </div>
+                </div>
+              ) : loadingCategories.has(activeTab) ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex items-center gap-3 text-gray-600">
                     <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent"></div>
@@ -1194,7 +1214,7 @@ export default function KnowledgeBasePage() {
                 </div>
               ) : filteredQAItems.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
-                  {searchQuery ? "没有找到匹配的内容" : '暂无问答内容，点击"新建内容"开始添加'}
+                  {searchQuery ? "没有找到匹配的内容" : `暂无${tabs.find(t => t.id === activeTab)?.label}问答内容，点击"新建内容"开始添加`}
                 </div>
               ) : (
                 <DndContext
@@ -1253,7 +1273,14 @@ export default function KnowledgeBasePage() {
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {requiredReading.map((item) => (
+                  {isLoading || loadingCategories.has(activeTab) ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center gap-2 text-gray-500 text-sm">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-red-500 border-t-transparent"></div>
+                        <span>加载中...</span>
+                      </div>
+                    </div>
+                  ) : requiredReading.map((item) => (
                     <div key={item.id} className="flex items-start justify-between gap-3 p-3 bg-red-50 rounded-lg">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm break-words">{item.text}</div>
@@ -1289,7 +1316,7 @@ export default function KnowledgeBasePage() {
                       </div>
                     </div>
                   ))}
-                  {requiredReading.length === 0 && (
+                  {!isLoading && !loadingCategories.has(activeTab) && requiredReading.length === 0 && (
                     <div className="text-center py-4 text-gray-500 text-sm">
                       {searchQuery ? "无相关内容" : "暂无必读内容"}
                     </div>
@@ -1324,7 +1351,14 @@ export default function KnowledgeBasePage() {
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {optionalReading.map((item) => (
+                  {isLoading || loadingCategories.has(activeTab) ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="flex items-center gap-2 text-gray-500 text-sm">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                        <span>加载中...</span>
+                      </div>
+                    </div>
+                  ) : optionalReading.map((item) => (
                     <div key={item.id} className="flex items-start justify-between gap-3 p-3 bg-blue-50 rounded-lg">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm break-words">{item.text}</div>
@@ -1360,7 +1394,7 @@ export default function KnowledgeBasePage() {
                       </div>
                     </div>
                   ))}
-                  {optionalReading.length === 0 && (
+                  {!isLoading && !loadingCategories.has(activeTab) && optionalReading.length === 0 && (
                     <div className="text-center py-4 text-gray-500 text-sm">
                       {searchQuery ? "无相关内容" : "暂无选读内容"}
                     </div>
